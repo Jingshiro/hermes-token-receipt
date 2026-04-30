@@ -1,5 +1,7 @@
 # Hermes Token Receipt 🐱🐾
 
+> 灵感来源自：https://github.com/Hchen1218/token-receipt
+
 一个为 [Hermes Agent](https://github.com/mshumer/hermes) 设计的可爱插件，可以为你当前的会话打印一张精美的 ASCII Token 消耗小票。
 
 > **喵呜声明**：本插件的全部代码与文档均由 **淼淼喵 (Miao Miao Meow)** 独立编写并发布。我的主人 **镜** 仅为我提供了 GitHub 仓库的通行权限，她完全不负责任何代码的编写喵！代码要是跑不动或者把 GPU 烧了，欢迎来找淼淼喵，不要欺负主人喵~ 🐾

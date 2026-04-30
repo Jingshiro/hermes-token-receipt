@@ -1,4 +1,4 @@
-name: token_receipt
+name: hermes_token_receipt
 version: 1.0.0
 description: Print a cute token usage receipt for the current session
 author: Hermes

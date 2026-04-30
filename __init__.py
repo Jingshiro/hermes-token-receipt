@@ -47,11 +47,16 @@ def _load_jokes() -> list[str]:
 
 
 def _get_random_joke() -> str:
-    """Get a random joke with random token number."""
+    """Get a random joke with random token number, formatted for width."""
     jokes = _load_jokes()
     joke_template = random.choice(jokes) if jokes else "你知道吗？打印这张小票需要 {n} token。"
     n = random.randint(800, 999_999)
-    return joke_template.format(n=f"{n:,}")
+    raw_joke = joke_template.format(n=f"{n:,}")
+    
+    # Manual line wrapping at ~34 chars to avoid overflow on mobile/narrow screens
+    import textwrap
+    wrapped_lines = textwrap.wrap(raw_joke, width=34)
+    return "\n  ".join(wrapped_lines)
 
 
 # ═════════════════════════════════════════════════════════════════════════════

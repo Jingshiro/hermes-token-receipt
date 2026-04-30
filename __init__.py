@@ -174,18 +174,56 @@ def _format_duration(seconds: float) -> str:
 # Receipt formatter
 # ═════════════════════════════════════════════════════════════════════════════
 
+def _get_model_display_name(model_id: str) -> str:
+    """Map model ID to display name from config."""
+    try:
+        from hermes_cli.config_loader import load_config
+        config = load_config()
+        
+        # Check providers in config
+        providers = config.get("providers", {})
+        for p_name, p_data in providers.items():
+            # If the provider has available_models_json, parse it
+            models_json = p_data.get("available_models_json")
+            if models_json:
+                import json
+                models = json.loads(models_json)
+                for m in models:
+                    if m.get("id") == model_id:
+                        return m.get("name", model_id)
+            
+            # Check model_display_name if this provider's active model matches
+            if p_data.get("model") == model_id and p_data.get("model_display_name"):
+                return p_data["model_display_name"]
+                
+        # Check the top-level model default
+        main_model = config.get("model", {})
+        if main_model.get("default") == model_id:
+            # Look for a provider that matches
+            p_name = main_model.get("provider")
+            if p_name and providers.get(p_name, {}).get("model_display_name"):
+                return providers[p_name]["model_display_name"]
+
+    except Exception:
+        pass
+    
+    return model_id
+
+
 def _build_receipt(
     session_id: str = "--",
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
     total_tokens: int = 0,
-    model_name: str = "--",
+    models: list[str] = None,
     turn_count: int = 0,
     started_at: Optional[float] = None,
     location: str = "--",
     host: str = "--",
 ) -> str:
     """Build the ASCII receipt."""
+    if not models:
+        models = ["--"]
     
     # Format timestamp
     now = datetime.now(ZoneInfo("Asia/Shanghai"))
@@ -198,11 +236,10 @@ def _build_receipt(
     else:
         duration = "--"
     
-    # Truncate session_id for display - if it's our dummy agent:ma, show a cool placeholder
+    # Truncate session_id
     if session_id.startswith("agent:m"):
         short_id = "LATEST"
     else:
-        # Extract the middle part of 20260430_111213_f51f93 -> 111213_f51f93
         parts = session_id.split("_")
         if len(parts) >= 3:
             short_id = f"{parts[1]}_{parts[2]}"
@@ -212,16 +249,20 @@ def _build_receipt(
     # Get random joke
     joke = _get_random_joke()
     
+    # Format models - join with comma, if too long it will be handled by the layout
+    model_str = ", ".join(models)
+    if len(model_str) > 24:
+        model_str = model_str[:21] + "..."
+    
     # Build receipt lines
     lines = [
         "```",
         "         HERMES TOKEN RECEIPT",
         f"       —— No.{short_id:>8} ——",
         "──────────────────────────────────────",
-        f"  Date      : {now.strftime('%Y-%m-%d')}",
         f"  Time      : {printed_at} CST",
         f"  Location  : {location} @ {host}",
-        f"  Model     : {model_name}",
+        f"  Models    : {model_str}",
         "──────────────────────────────────────",
         f"  Prompt      ........ {prompt_tokens:>8,} tk",
         f"  Completion  ........ {completion_tokens:>8,} tk",
@@ -248,11 +289,46 @@ async def cmd_receipt(raw_args: str) -> Optional[str]:
     """Handler for /receipt command.
     
     Args:
-        raw_args: Raw arguments passed to the command (unused)
+        raw_args: Raw arguments passed to the command
     
     Returns:
         Formatted receipt string or None
     """
+    raw_args = raw_args.strip()
+    
+    # ═════════════════════════════════════════════════════════════════════════
+    # Subcommand: /receipt joke {content}
+    # ═════════════════════════════════════════════════════════════════════════
+    if raw_args.startswith("joke "):
+        new_joke = raw_args[5:].strip()
+        if not new_joke:
+            return "Error: Joke content cannot be empty."
+            
+        plugin_dir = Path(__file__).parent
+        jokes_file = plugin_dir / "jokes.yaml"
+        
+        try:
+            jokes_data = {"jokes": []}
+            if jokes_file.exists():
+                with open(jokes_file, "r", encoding="utf-8") as f:
+                    content = yaml.safe_load(f)
+                    if isinstance(content, dict) and "jokes" in content:
+                        jokes_data = content
+            
+            if new_joke not in jokes_data["jokes"]:
+                jokes_data["jokes"].append(new_joke)
+                with open(jokes_file, "w", encoding="utf-8") as f:
+                    # Use a clean dump without persona
+                    yaml.dump(jokes_data, f, allow_unicode=True, sort_keys=False)
+                return "Joke added successfully. Changes will take effect after gateway restart."
+            else:
+                return "Joke already exists in the collection."
+        except Exception as e:
+            return f"Failed to save joke: {str(e)}"
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # Main Receipt Logic
+    # ═════════════════════════════════════════════════════════════════════════
     # Get session ID
     session_id = _get_session_id() or "--"
     
@@ -324,8 +400,43 @@ async def cmd_receipt(raw_args: str) -> Optional[str]:
     # Total includes all token types
     total_tokens = prompt_tokens + completion_tokens + cache_read + cache_write + reasoning
     
-    # Get model name
-    model_name = session_data.get("model", "--") or "--"
+    # Collect all models used in this session
+    models_used = []
+    
+    # 1. Get models from message history
+    try:
+        from hermes_state import SessionDB
+        db = SessionDB()
+        with db._lock:
+            # We assume session_id is a valid DB ID at this point
+            cursor = db._conn.execute(
+                "SELECT DISTINCT model FROM messages WHERE session_id = ? AND model IS NOT NULL",
+                (session_id,)
+            )
+            rows = cursor.fetchall()
+            for row in rows:
+                m_name = _get_model_display_name(row[0])
+                if m_name not in models_used:
+                    models_used.append(m_name)
+    except Exception:
+        pass
+
+    # 2. Add current active model from context if not already present
+    try:
+        from gateway.session_context import get_session_env
+        current_model = get_session_env("HERMES_MODEL")
+        if current_model:
+            m_name = _get_model_display_name(current_model)
+            if m_name not in models_used:
+                models_used.append(m_name)
+    except Exception:
+        pass
+        
+    # 3. Fallback to session_data model if still empty
+    if not models_used:
+        m_id = session_data.get("model")
+        if m_id:
+            models_used.append(_get_model_display_name(m_id))
     
     # Get turn count
     turn_count = session_data.get("message_count", 0) or 0
@@ -343,7 +454,7 @@ async def cmd_receipt(raw_args: str) -> Optional[str]:
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         total_tokens=total_tokens,
-        model_name=model_name,
+        models=models_used,
         turn_count=turn_count,
         started_at=started_at,
         location=location,

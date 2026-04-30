@@ -187,29 +187,39 @@ def _get_model_display_name(model_id: str) -> str:
             # Check providers in config
             providers = config.get("providers", {})
             for p_name, p_data in providers.items():
-                # If the provider has available_models_json, parse it
+                # 1. Check the official 'models' dictionary
+                models_dict = p_data.get("models", {})
+                if isinstance(models_dict, dict) and model_id in models_dict:
+                    return models_dict[model_id]
+
+                # 2. Fallback: Check available_models_json (legacy support)
                 models_json = p_data.get("available_models_json")
                 if models_json:
                     import json
                     try:
-                        models = json.loads(models_json)
-                        for m in models:
+                        models_list = json.loads(models_json)
+                        for m in models_list:
                             if m.get("id") == model_id:
                                 return m.get("name", model_id)
                     except Exception:
                         pass
                 
-                # Check model_display_name if this provider's active model matches
+                # 3. Fallback: Check model_display_name if this provider's active model matches
                 if p_data.get("model") == model_id and p_data.get("model_display_name"):
                     return p_data["model_display_name"]
                     
             # Check the top-level model default
             main_model = config.get("model", {})
             if main_model.get("default") == model_id or main_model.get("model") == model_id:
-                # Look for a provider that matches
                 p_name = main_model.get("provider")
-                if p_name and providers.get(p_name, {}).get("model_display_name"):
-                    return providers[p_name]["model_display_name"]
+                if p_name:
+                    p_data = providers.get(p_name, {})
+                    # Check its models dict first
+                    if p_data.get("models") and model_id in p_data["models"]:
+                        return p_data["models"][model_id]
+                    # Then display name
+                    if p_data.get("model_display_name"):
+                        return p_data["model_display_name"]
     except Exception:
         pass
     
@@ -438,7 +448,8 @@ async def cmd_receipt(raw_args: str) -> Optional[str]:
         if current_model:
             m_name = _get_model_display_name(current_model)
             if m_name not in models_used:
-                models_used.append(m_name)
+                # Add to the beginning so it's most prominent
+                models_used.insert(0, m_name)
     except Exception:
         pass
         

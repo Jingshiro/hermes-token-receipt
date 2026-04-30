@@ -177,33 +177,39 @@ def _format_duration(seconds: float) -> str:
 def _get_model_display_name(model_id: str) -> str:
     """Map model ID to display name from config."""
     try:
-        from hermes_cli.config_loader import load_config
-        config = load_config()
-        
-        # Check providers in config
-        providers = config.get("providers", {})
-        for p_name, p_data in providers.items():
-            # If the provider has available_models_json, parse it
-            models_json = p_data.get("available_models_json")
-            if models_json:
-                import json
-                models = json.loads(models_json)
-                for m in models:
-                    if m.get("id") == model_id:
-                        return m.get("name", model_id)
-            
-            # Check model_display_name if this provider's active model matches
-            if p_data.get("model") == model_id and p_data.get("model_display_name"):
-                return p_data["model_display_name"]
+        import yaml
+        from pathlib import Path
+        config_path = Path.home() / ".hermes" / "config.yaml"
+        if config_path.exists():
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = yaml.safe_load(f)
                 
-        # Check the top-level model default
-        main_model = config.get("model", {})
-        if main_model.get("default") == model_id:
-            # Look for a provider that matches
-            p_name = main_model.get("provider")
-            if p_name and providers.get(p_name, {}).get("model_display_name"):
-                return providers[p_name]["model_display_name"]
-
+            # Check providers in config
+            providers = config.get("providers", {})
+            for p_name, p_data in providers.items():
+                # If the provider has available_models_json, parse it
+                models_json = p_data.get("available_models_json")
+                if models_json:
+                    import json
+                    try:
+                        models = json.loads(models_json)
+                        for m in models:
+                            if m.get("id") == model_id:
+                                return m.get("name", model_id)
+                    except Exception:
+                        pass
+                
+                # Check model_display_name if this provider's active model matches
+                if p_data.get("model") == model_id and p_data.get("model_display_name"):
+                    return p_data["model_display_name"]
+                    
+            # Check the top-level model default
+            main_model = config.get("model", {})
+            if main_model.get("default") == model_id or main_model.get("model") == model_id:
+                # Look for a provider that matches
+                p_name = main_model.get("provider")
+                if p_name and providers.get(p_name, {}).get("model_display_name"):
+                    return providers[p_name]["model_display_name"]
     except Exception:
         pass
     
@@ -408,16 +414,20 @@ async def cmd_receipt(raw_args: str) -> Optional[str]:
         from hermes_state import SessionDB
         db = SessionDB()
         with db._lock:
-            # We assume session_id is a valid DB ID at this point
-            cursor = db._conn.execute(
-                "SELECT DISTINCT model FROM messages WHERE session_id = ? AND model IS NOT NULL",
-                (session_id,)
-            )
-            rows = cursor.fetchall()
-            for row in rows:
-                m_name = _get_model_display_name(row[0])
-                if m_name not in models_used:
-                    models_used.append(m_name)
+            # First check if the messages table has a model column
+            cursor = db._conn.execute("PRAGMA table_info(messages)")
+            columns = [row[1] for row in cursor.fetchall()]
+            
+            if "model" in columns:
+                cursor = db._conn.execute(
+                    "SELECT DISTINCT model FROM messages WHERE session_id = ? AND model IS NOT NULL",
+                    (session_id,)
+                )
+                rows = cursor.fetchall()
+                for row in rows:
+                    m_name = _get_model_display_name(row[0])
+                    if m_name not in models_used:
+                        models_used.append(m_name)
     except Exception:
         pass
 

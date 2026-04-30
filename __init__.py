@@ -210,10 +210,9 @@ def _build_receipt(
     # Build receipt lines
     lines = [
         "```",
-        "╔══════════════════════════════════════╗",
-        "║      HERMES TOKEN RECEIPT            ║",
-        f"║    —— No.{short_id:>8} ——             ║",
-        "╠══════════════════════════════════════╣",
+        "         HERMES TOKEN RECEIPT",
+        f"       —— No.{short_id:>8} ——",
+        "──────────────────────────────────────",
         f"  Date      : {now.strftime('%Y-%m-%d')}",
         f"  Time      : {printed_at} CST",
         f"  Location  : {location} @ {host}",
@@ -226,11 +225,10 @@ def _build_receipt(
         "──────────────────────────────────────",
         f"  Turns     : {turn_count}",
         f"  Duration  : {duration}",
-        "══════════════════════════════════════",
+        "──────────────────────────────────────",
         f"  {joke}",
-        "══════════════════════════════════════",
-        "     Thanks for burning GPUs ♥",
-        "╚══════════════════════════════════════╝",
+        "──────────────────────────────────────",
+        "        Thanks for the compute ♥",
         "```",
     ]
     

@@ -370,14 +370,36 @@ async def cmd_receipt(raw_args: str) -> Optional[str]:
         try:
             from hermes_state import SessionDB
             db = SessionDB()
-            # If session_id is a gateway key (contains agent:), directly fetch latest feishu.
+            # If session_id is a gateway key (contains agent:), extract source from key
+            # Format: agent:main:{source}:dm:{chat_id} or agent:main:{source}:group:{chat_id}
+            # Supported sources: feishu, weixin, telegram, discord, slack, whatsapp, etc.
             if "agent:" in session_id:
+                # Parse source from session key (e.g., "weixin" from "agent:main:weixin:dm:...")
+                parts = session_id.split(":")
+                # parts[0]="agent", parts[1]="main", parts[2]=source, parts[3]=chat_type, parts[4]=chat_id
+                source = parts[2] if len(parts) >= 3 else None
+                
+                # List of known messaging platforms
+                known_sources = ["feishu", "weixin", "telegram", "discord", "slack", "whatsapp", "matrix", "signal"]
+                
                 with db._lock:
-                    cursor = db._conn.execute(
-                        "SELECT * FROM sessions WHERE source = 'feishu' ORDER BY started_at DESC LIMIT 1"
-                    )
-                    row = cursor.fetchone()
+                    if source and source.lower() in known_sources:
+                        # Query by specific source for better accuracy
+                        cursor = db._conn.execute(
+                            "SELECT * FROM sessions WHERE source = ? ORDER BY started_at DESC LIMIT 1",
+                            (source.lower(),)
+                        )
+                        row = cursor.fetchone()
+                    else:
+                        # Fallback: try to find by any known source, most recent first
+                        placeholders = ",".join(["?"] * len(known_sources))
+                        cursor = db._conn.execute(
+                            f"SELECT * FROM sessions WHERE source IN ({placeholders}) ORDER BY started_at DESC LIMIT 1",
+                            known_sources
+                        )
+                        row = cursor.fetchone()
             else:
+                # For non-gateway sessions, try direct ID lookup first
                 with db._lock:
                     cursor = db._conn.execute(
                         "SELECT * FROM sessions WHERE id = ?",

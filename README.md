@@ -10,15 +10,18 @@
          HERMES TOKEN RECEIPT
        —— No.111213_f51f93 ——
 ──────────────────────────────────────
-  Date      : 2026-04-30
-  Time      : 2026-04-30 11:45:00 CST
+  Time      : 2026-05-09 17:50:00 CST
   Location  : Shanghai @ hermes-server
-  Model     : gpt-4o
+  Models    : gpt-4o
 ──────────────────────────────────────
-  Prompt      ........   1,234 tk
-  Completion  ........     567 tk
+  Input       ........   1,234 tk
+  Cache Read  ........   5,000 tk
+  Cache Write ........     500 tk
+  (Prompt Total)         6,734 tk
+  Completion  ........   1,567 tk
+  Reasoning   ........     800 tk
   ───────────────────────────────────
-  TOTAL       ........   1,801 tk
+  TOTAL       ........   8,301 tk
 ──────────────────────────────────────
   Turns     : 5
   Duration  : 12m 34s
@@ -31,9 +34,12 @@
 ## ✨ 功能特性
 
 - **精美 ASCII 样式**：模拟真实购物小票。
-- **详细数据**：展示 Prompt、Completion、Total Tokens，以及对话轮数和持续时间。
+- **Token 细分统计**：展示 Input（非缓存输入）、Cache Read（缓存命中）、Cache Write（缓存写入）、Completion（输出）、Reasoning（推理）等明细，并附带 Prompt Total 小计。
 - **自动定位**：尝试根据服务器时区推断地理位置。
+- **多模型追踪**：自动记录会话中使用过的所有模型。
 - **冷笑话库**：文末随机附赠一个关于 Token 的地狱笑话（由 Gemini 提供大力脑洞支持喵！）。
+
+> **注意**：Cache Read / Cache Write / Reasoning 的数据取决于模型提供商是否返回这些字段。部分提供商可能不提供细分数据，此时这些字段显示为 0。
 
 ## 🛠️ 安装方法
 
@@ -46,7 +52,7 @@
 2. **克隆/下载插件**：
    将 `token_receipt` 文件夹放置于此处。
    ```bash
-   git clone https://github.com/Shirokawa233/token_receipt.git
+   git clone https://github.com/Jingshiro/hermes-token-receipt.git
    ```
 
 3. **配置检查**：

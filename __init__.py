@@ -231,6 +231,9 @@ def _build_receipt(
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
     total_tokens: int = 0,
+    cache_read: int = 0,
+    cache_write: int = 0,
+    reasoning: int = 0,
     models: list[str] = None,
     turn_count: int = 0,
     started_at: Optional[float] = None,
@@ -280,8 +283,12 @@ def _build_receipt(
         f"  Location  : {location} @ {host}",
         f"  Models    : {model_str}",
         "──────────────────────────────────────",
-        f"  Prompt      ........ {prompt_tokens:>8,} tk",
+        f"  Input       ........ {prompt_tokens:>8,} tk",
+        f"  Cache Read  ........ {cache_read:>8,} tk",
+        f"  Cache Write ........ {cache_write:>8,} tk",
+        f"  (Prompt Total)      {prompt_tokens + cache_read + cache_write:>8,} tk",
         f"  Completion  ........ {completion_tokens:>8,} tk",
+        f"  Reasoning   ........ {reasoning:>8,} tk",
         "  ───────────────────────────────────",
         f"  TOTAL       ........ {total_tokens:>8,} tk",
         "──────────────────────────────────────",
@@ -435,8 +442,9 @@ async def cmd_receipt(raw_args: str) -> Optional[str]:
     cache_write = int(session_data.get("cache_write_tokens", 0) or 0)
     reasoning = int(session_data.get("reasoning_tokens", 0) or 0)
     
-    # Total includes all token types
-    total_tokens = prompt_tokens + completion_tokens + cache_read + cache_write + reasoning
+    # Total = full prompt (input + cache) + output (includes reasoning)
+    # Do NOT add reasoning separately — output_tokens already contains it
+    total_tokens = prompt_tokens + completion_tokens + cache_read + cache_write
     
     # Collect all models used in this session
     models_used = []
@@ -497,6 +505,9 @@ async def cmd_receipt(raw_args: str) -> Optional[str]:
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         total_tokens=total_tokens,
+        cache_read=cache_read,
+        cache_write=cache_write,
+        reasoning=reasoning,
         models=models_used,
         turn_count=turn_count,
         started_at=started_at,
